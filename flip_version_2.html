@@ -3,48 +3,186 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Flip PDF - Two Pages</title>
-	
-	
-	 <style>
-    body {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      font-family: Arial, sans-serif;
-      margin: 0;
-      padding: 0;
-      height: 100vh;
-      background-color: #f0f0f0;
-    }
-    canvas {
-      border: 1px solid #000;
-      margin: 10px 0;
-    }
-    button {
-      padding: 10px 20px;
-      margin: 5px;
-      font-size: 16px;
-      cursor: pointer;
-      border: none;
-      border-radius: 5px;
-      background-color: #007BFF;
-      color: white;
-      transition: background-color 0.3s;
-    }
-    button:hover {
-      background-color: #0056b3;
-    }
-    button:disabled {
-      background-color: #cccccc;
-      cursor: not-allowed;
-    }
-  </style>
+    <title>Book Page Flip</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: #808080; /* Gray background */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+
+        #nav-buttons {
+            margin-bottom: 20px;
+            z-index: 2; /* Ensure buttons are above pages */
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 0 10px;
+        }
+
+        #pdf-container {
+            position: relative;
+            width: 1600px; /* Increased size for more space */
+            height: 1200px; /* Increased size for more space */
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            background: #ddd;
+        }
+
+        .page {
+            position: relative;
+            width: 48%; /* Half the container width */
+            height: 100%;
+            background: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden; /* Hide anything outside the page boundaries */
+            backface-visibility: hidden; /* Prevent mirror image */
+            transform-style: preserve-3d; /* Enable 3D effects */
+            z-index: 1; /* Default z-index */
+        }
+
+        .page.left {
+            transform-origin: right center; /* Flip from the right edge */
+        }
+
+        .page.right {
+            transform-origin: left center; /* Flip from the left edge */
+        }
+
+        .flip {
+            animation: flipPage 1.5s forwards; /* Flip animation: 1.5 seconds */
+        }
+
+        .flip-above {
+            z-index: 2; /* Ensure this page is above others during flip */
+        }
+
+        @keyframes flipPage {
+            0% {
+                transform: rotateY(0deg);
+            }
+            50% {
+                transform: rotateY(-90deg);
+            }
+            100% {
+                transform: rotateY(-180deg);
+            }
+        }
+    </style>
 </head>
 <body>
-    <div id="pdf-container" style="display: flex; flex-direction: column; gap: 20px;"></div>
+    <div id="nav-buttons">
+        <button onclick="previousPage()">Previous</button>
+        <button onclick="nextPage()">Next</button>
+    </div>
+    <div id="pdf-container">
+        <div id="page-left" class="page left"></div>
+        <div id="page-right" class="page right"></div>
+    </div>
+    <audio id="page-flip-sound" src="page-flip.mp3"></audio>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-    <script src="flip_version_2.js"></script>
+    <script>
+        const url = 'code1.pdf'; // Replace with your actual PDF file path
+        let pdf = null;
+        let currentPage = 1;
+        const pageLeft = document.getElementById('page-left');
+        const pageRight = document.getElementById('page-right');
+
+        // Load the PDF
+        pdfjsLib.getDocument(url).promise.then(loadedPdf => {
+            pdf = loadedPdf;
+            renderPages(currentPage);
+        });
+
+        // Render two pages (left and right)
+        function renderPages(startPage) {
+            renderPage(startPage, pageLeft); // Render left page
+            renderPage(startPage + 1, pageRight); // Render right page
+        }
+
+        // Render a single page into the specified container
+        function renderPage(pageNumber, container) {
+            if (pageNumber > pdf.numPages || pageNumber < 1) {
+                container.innerHTML = ''; // Clear if out of bounds
+                return;
+            }
+
+            pdf.getPage(pageNumber).then(page => {
+                const scale = 1.4; // Increased scale factor to show more content
+                const viewport = page.getViewport({ scale: scale });
+                const canvas = document.createElement('canvas');
+                const context = canvas.getContext('2d');
+                canvas.width = viewport.width;
+                canvas.height = viewport.height;
+
+                // Clear previous content and render the new page
+                container.innerHTML = '';
+                container.appendChild(canvas);
+
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: viewport
+                };
+                page.render(renderContext);
+            });
+        }
+
+        // Flip to the next page
+        function nextPage() {
+            if (currentPage + 2 <= pdf.numPages) {
+                playPageFlipSound();
+
+                // Animate flipping the right page first
+                animateFlip(pageRight, true);
+                setTimeout(() => {
+                    currentPage += 2;
+                    renderPages(currentPage);
+                }, 1500); // Wait for animation to finish
+            }
+        }
+
+        // Flip to the previous page
+        function previousPage() {
+            if (currentPage - 2 >= 1) {
+                playPageFlipSound();
+
+                // Animate flipping the left page first
+                animateFlip(pageLeft, false);
+                setTimeout(() => {
+                    currentPage -= 2;
+                    renderPages(currentPage);
+                }, 1500); // Wait for animation to finish
+            }
+        }
+
+        // Play the page flip sound
+        function playPageFlipSound() {
+            const sound = document.getElementById('page-flip-sound');
+            sound.currentTime = 0; // Restart sound
+            sound.play();
+        }
+
+        // Animate the page flip
+        function animateFlip(page, isAbove) {
+            page.classList.add('flip');
+            if (isAbove) page.classList.add('flip-above');
+
+            // Remove animation classes after flip
+            setTimeout(() => {
+                page.classList.remove('flip');
+                page.classList.remove('flip-above');
+            }, 1500); // Match animation duration
+        }
+    </script>
 </body>
 </html>
